@@ -1,0 +1,2 @@
+# Optional. Needs NVIDIA GPU + driver + CUDA toolkit.
+numba>=0.59
