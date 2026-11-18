@@ -46,3 +46,21 @@ Domain: Python Development
 Role: Data Associate L1 Intern
 ## Development Status
 Initial project setup completed. Detailed implementation and GPU framework selection are pending confirmation of technical requirements.
+## Sequence Alignment
+
+GeneWeaver currently includes a CPU-based implementation of the Needleman-Wunsch global alignment algorithm.
+
+### Features
+- Performs global alignment of two DNA sequences.
+- Uses match, mismatch, and gap scoring.
+- Supports DNA bases A, C, G, T, and N.
+- Generates aligned sequences using dynamic programming.
+- Validates input sequences.
+
+### Testing
+Automated tests are implemented using pytest.
+
+Run the tests with:
+
+```bash
+python -m pytest -v
