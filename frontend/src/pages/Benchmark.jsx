@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { api } from "../api.js";
-import { Err, Stat } from "../ui.jsx";
+import { Field, Loading, Metric, Notice, PageHeader, Section } from "../ui.jsx";
 
-const r = (x) => (x == null ? "-" : x.toFixed(3));
+const t = (x) => (x == null ? "-" : x < 10 ? x.toFixed(2) : x.toFixed(1)) + " ms";
 
 export default function Benchmark() {
   const [hw, setHw] = useState(null), [res, setRes] = useState(null), [err, setErr] = useState(""), [busy, setBusy] = useState(false);
@@ -14,24 +14,31 @@ export default function Benchmark() {
     try { setRes(await api("/benchmark", { method: "POST", body: { sizes: sizes.split(",").map((x) => parseInt(x.trim(), 10)).filter(Boolean), repeats: +reps } })); }
     catch (x) { setErr(x.message); } finally { setBusy(false); }
   }
-  const g = hw?.hardware.gpu, gpuRun = res?.rows.some((x) => x.gpu);
-  const chart = res?.rows.map((x) => ({ n: x.n, CPU: x.cpu_ms.median, "GPU kernel": x.gpu?.kernel_ms.median, "GPU end-to-end": x.gpu?.total_ms.median, Speedup: x.speedup_total }));
-  return <div><h1>Benchmarking</h1>
-    {hw && <div className="grid4"><Stat label="CPU" value={hw.hardware.cpu} /><Stat label="CPU cores" value={hw.hardware.cpu_cores} />
-      <Stat label="GPU" value={g.available ? g.name : "Not available"} /><Stat label="GPU framework" value={g.available ? g.framework : "-"} /></div>}
-    {g && !g.available && <div className="alert info">GPU not available: {g.reason}. CPU benchmark still works. GPU numbers are never simulated.</div>}
-    <form className="card" onSubmit={run}><h2>Configuration</h2>
-      <p className="muted">Workload: score N seeded random 20-nt guides (GC count + mismatches vs a reference guide). Same data for CPU and GPU. This is candidate scoring, not GPU dynamic-programming alignment.</p>
-      <div className="row"><div><label htmlFor="s">Candidate counts (comma list, up to 6, max 2,000,000)</label><input id="s" value={sizes} onChange={(e) => setSizes(e.target.value)} /></div>
-        <div><label htmlFor="rp">Repetitions</label><input id="rp" type="number" min="1" max="50" value={reps} onChange={(e) => setReps(e.target.value)} /></div></div>
-      <Err msg={err} /><button className="btn primary" disabled={busy} style={{ marginTop: ".8rem" }}>{busy ? "Running…" : "Run benchmark"}</button></form>
-    {res && <><div className="card"><h2>Results ({res.timestamp})</h2><div className="scroll"><table><thead><tr><th>Candidates</th><th>CPU median ms</th><th>CPU std</th>
-      {gpuRun && <><th>GPU kernel ms</th><th>GPU transfer ms (H2D+D2H)</th><th>GPU end-to-end ms</th><th>Speedup (e2e)</th><th>Verified</th></>}</tr></thead>
-      <tbody>{res.rows.map((x) => <tr key={x.n}><td>{x.n.toLocaleString()}</td><td>{r(x.cpu_ms.median)}</td><td>{r(x.cpu_ms.std)}</td>
-        {gpuRun && (x.gpu ? <><td>{r(x.gpu.kernel_ms.median)}</td><td>{r(x.gpu.h2d_ms.median + x.gpu.d2h_ms.median)}</td><td>{r(x.gpu.total_ms.median)}</td><td>{r(x.speedup_total)}×</td><td>{x.verified ? "yes" : "NO"}</td></> : <td colSpan="5">-</td>)}</tr>)}</tbody></table></div>
-      <p className="muted">Speedup = CPU median / GPU end-to-end median. Repeats: {res.repeats}. Input: {res.input}. CPU: {res.hardware.cpu}.</p></div>
-      <div className="card"><h2>Runtime vs candidate count (ms, log scale)</h2><div style={{ height: 300 }}><ResponsiveContainer><LineChart data={chart}>
-        <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="n" scale="log" domain={["auto", "auto"]} type="number" /><YAxis scale="log" domain={["auto", "auto"]} /><Tooltip /><Legend />
-        <Line dataKey="CPU" stroke="#2864DC" /><Line dataKey="GPU kernel" stroke="#14B8A6" /><Line dataKey="GPU end-to-end" stroke="#E6A23C" /></LineChart></ResponsiveContainer></div></div>
-      {gpuRun && <div className="card"><h2>Speedup (end-to-end)</h2><div style={{ height: 240 }}><ResponsiveContainer><LineChart data={chart}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="n" type="number" scale="log" domain={["auto", "auto"]} /><YAxis /><Tooltip /><Line dataKey="Speedup" stroke="#16A36A" /></LineChart></ResponsiveContainer></div></div>}</>}</div>;
+  const g = hw?.hardware.gpu, last = res?.rows[res.rows.length - 1], hasGpu = !!last?.gpu;
+  const chart = res?.rows.map((x) => ({ n: x.n, CPU: +x.cpu_ms.median.toFixed(3), GPU: x.gpu ? +x.gpu.total_ms.median.toFixed(3) : undefined }));
+  return <div className="stack-lg"><PageHeader title="Performance Comparison" subtitle="Measure how fast CPU and GPU score DNA guide candidates on your computer." />
+    {!hw && !err && <Loading />}
+    {hw && <div className="chips"><span className="chip good">CPU ready</span>
+      <span className={"chip " + (g.available ? "good" : "off")}>{g.available ? `GPU ready: ${g.name}` : "GPU not available"}</span>
+      <span className="chip">Mode: {g.available ? "CPU and GPU" : "CPU only"}</span></div>}
+    {g && !g.available && <Notice>GPU processing is not available on this computer ({g.reason}). You can still run the CPU test. GPU results are never simulated.</Notice>}
+    <form className="panel stack" onSubmit={run}>
+      <p className="muted small">The test scores random 20-letter guides (GC count and letter differences). CPU and GPU get the exact same input. It does not test full sequence alignment.</p>
+      <div className="row"><Field id="s" label="Number of guides to score" hint="Comma-separated. Up to 6 values, max 2,000,000 each."><input id="s" value={sizes} onChange={(e) => setSizes(e.target.value)} /></Field>
+        <Field id="rp" label="Repeats" hint="More repeats give steadier results."><input id="rp" type="number" min="1" max="50" value={reps} onChange={(e) => setReps(e.target.value)} /></Field></div>
+      <Notice kind="error">{err}</Notice><div><button className="btn primary" disabled={busy}>{busy ? "Running test…" : "Run Benchmark"}</button></div></form>
+    {!res && !busy && <p className="muted">No benchmark yet. Run the test to see results.</p>}
+    {res && <>
+      <div className="metrics"><Metric label="CPU Time" value={t(last.cpu_ms.median)} hint={`For ${last.n.toLocaleString()} guides (median)`} />
+        <Metric label="GPU Time" value={hasGpu ? t(last.gpu.total_ms.median) : "Not available"} hint={hasGpu ? "Includes copying data" : "No GPU in this run"} />
+        <Metric label="Speedup" value={hasGpu ? last.speedup_total.toFixed(1) + "×" : "-"} hint="How many times faster one mode is than the other." /></div>
+      {hasGpu && !last.verified && <Notice kind="error">GPU and CPU results did not match. Do not trust the GPU timings.</Notice>}
+      <section className="panel"><h2 style={{ marginBottom: 12 }}>Time by number of guides</h2><div style={{ height: 280 }}><ResponsiveContainer><LineChart data={chart}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="n" type="number" scale="log" domain={["dataMin", "dataMax"]} /><YAxis scale="log" allowDataOverflow domain={[(m) => Math.max(m / 2, 0.001), (m) => m * 2]} unit=" ms" width={70} /><Tooltip /><Legend />
+        <Line dataKey="CPU" stroke="#3269D6" /><Line dataKey="GPU" stroke="#14A89A" /></LineChart></ResponsiveContainer></div><p className="hint">Lower is faster. Both axes use a log scale.</p></section>
+      <Section title="Hardware and Technical Details"><div className="stack">
+        <p className="small">Measured {res.timestamp}. {res.repeats} repeats after one warm-up run. Input: {res.input}.</p>
+        <div className="scroll"><table><thead><tr><th>Guides</th><th>CPU median</th><th>CPU std dev</th>{hasGpu && <><th>GPU kernel</th><th>Data copy</th><th>GPU total</th></>}</tr></thead>
+          <tbody>{res.rows.map((x) => <tr key={x.n}><td>{x.n.toLocaleString()}</td><td>{t(x.cpu_ms.median)}</td><td>{t(x.cpu_ms.std)}</td>{hasGpu && (x.gpu ? <><td>{t(x.gpu.kernel_ms.median)}</td><td>{t(x.gpu.h2d_ms.median + x.gpu.d2h_ms.median)}</td><td>{t(x.gpu.total_ms.median)}</td></> : <td colSpan="3">-</td>)}</tr>)}</tbody></table></div>
+        <p className="small muted">CPU: {res.hardware.cpu} ({res.hardware.cpu_cores} cores) · GPU: {res.hardware.gpu.available ? `${res.hardware.gpu.name} via ${res.hardware.gpu.framework}` : "not available"} · {Object.entries(res.software).map(([k, v]) => `${k} ${v}`).join(" · ")}</p></div></Section></>}</div>;
 }

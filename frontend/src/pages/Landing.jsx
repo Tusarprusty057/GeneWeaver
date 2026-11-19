@@ -1,33 +1,26 @@
 import { Link } from "react-router-dom";
 import { Logo } from "../ui.jsx";
+import { useAuth } from "../auth.jsx";
 
 export function PublicNav() {
+  const { user } = useAuth();
   return <nav className="pubnav"><Logo /><span className="sp" />
-    <Link to="/">Home</Link><a href="/#features">Features</a><a href="/#tech">Technology</a>
-    <Link to="/documentation">Documentation</Link><Link to="/login">Sign In</Link>
-    <Link className="btn primary" to="/register">Get Started</Link></nav>;
+    <Link to="/">Home</Link><Link to="/documentation">Documentation</Link>
+    {user ? <Link className="btn primary" to="/dashboard">Open Dashboard</Link> : <><Link to="/login">Sign In</Link><Link className="btn primary" to="/register">Get Started</Link></>}</nav>;
 }
-export const Footer = () => <footer><div className="pub">GeneWeaver · educational and research tool · <Link to="/documentation">Documentation</Link> · Contact: your-email@example.com (placeholder) · Privacy &amp; Terms: local-use project, data stays in your own database.</div></footer>;
-
-const features = [
-  ["DNA processing", "FASTA/TXT input, strict A/C/G/T/N validation, reverse complement."],
-  ["CRISPR candidate scanning", "SpCas9 20 nt + NGG on both strands with checked coordinate mapping. Configurable PAM."],
-  ["Sequence alignment", "Biopython PairwiseAligner, local or global, custom scores, real alignment viewer."],
-  ["CPU / GPU scoring", "NumPy reference path. Optional Numba CUDA kernel for candidate scoring when a GPU exists."],
-  ["Benchmarking", "Seeded identical input, warm-up, repeats, median/std, result equality check."],
-  ["Saved results", "History, filters, CSV / JSON / PDF export."]];
+export const Footer = () => <footer className="pf"><div className="pub">GeneWeaver is a learning and research tool. It does not predict whether a CRISPR guide works or is safe.
+  {" "}<Link to="/documentation">Documentation</Link> · Your data stays in your own database. · Contact: add your email here.</div></footer>;
 
 export default function Landing() {
   return <div><div className="pub"><PublicNav />
-    <section className="hero"><h1>Accelerating DNA Sequence Analysis Through Intelligent Computing.</h1>
-      <p>GeneWeaver is a computational platform for DNA sequence processing, CRISPR target candidate identification, sequence alignment, and CPU/GPU performance evaluation.</p>
-      <div className="row" style={{ maxWidth: 360 }}><Link className="btn primary" to="/register">Start Analyzing</Link><a className="btn" href="#features">Explore Platform</a></div></section>
-    <section className="card"><h2>How it works</h2><div className="flow">
-      {["DNA Input", "Validation", "Candidate Scanning", "Alignment", "Scoring", "Results"].map((s, i, a) => <span key={s}>{s}{i < a.length - 1 ? "  →" : ""}</span>)}</div></section>
-    <section id="features"><h2>Features</h2><div className="grid4">{features.map(([t, d]) => <div className="card" key={t}><b>{t}</b><p className="muted">{d}</p></div>)}</div></section>
-    <section id="tech" className="card"><h2>Technology</h2>
-      <p>React + Vite + Recharts · FastAPI + Pydantic · SQLAlchemy + SQLite · Biopython · NumPy · Numba CUDA (optional).</p></section>
-    <section className="card"><h2>Transparency and limits</h2>
-      <p>Candidates are computational sites only. GeneWeaver makes no claim about guide efficacy, off-target risk, or biological safety. GPU results appear only when a CUDA GPU is detected. Details: <Link to="/documentation">documentation</Link>.</p></section>
+    <section className="hero"><h1>Find CRISPR targets and compare DNA sequences.</h1>
+      <p>Upload a DNA sequence, find CRISPR target candidates, align two sequences, and see how CPU and GPU speeds compare.</p>
+      <div className="inline"><Link className="btn primary" to="/register">Start Analysis</Link><Link className="btn" to="/documentation">Read the Guide</Link></div></section>
+    <section className="sec"><h2>How it works</h2><div className="steps">
+      <div><b>1. Add DNA</b><span className="muted">Paste a sequence or upload a FASTA file. GeneWeaver checks it for you.</span></div>
+      <div><b>2. Choose an analysis</b><span className="muted">Find CRISPR targets, compare two sequences, or do both.</span></div>
+      <div><b>3. Read the results</b><span className="muted">See the main numbers first. Open details when you need them. Export as CSV, JSON or PDF.</span></div></div></section>
+    <section className="sec"><h2>Good to know</h2>
+      <p className="muted">Candidates are sequence patterns (a 20-letter guide next to an NGG PAM). A match does not prove a guide works. GPU results only appear if your computer has a supported NVIDIA GPU.</p></section>
   </div><Footer /></div>;
 }

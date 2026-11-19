@@ -101,6 +101,7 @@ class AnalysisIn(AlignParams):
     strands: Literal["both", "forward", "reverse"] = "both"
     compare_guide: Optional[str] = None
     execution_mode: Literal["cpu", "auto", "gpu"] = "auto"
+    analysis_type: Optional[Literal["crispr", "alignment", "full"]] = None  # None = old behaviour
 
 
 class AlignIn(AlignParams):
@@ -123,7 +124,7 @@ def token_for(u):
 
 
 def user_out(u):
-    return {"id": u.id, "name": u.name, "email": u.email}
+    return {"id": u.id, "name": u.name, "email": u.email, "created_at": iso(u.created_at)}
 
 
 @app.post("/api/auth/register", status_code=201)
@@ -151,6 +152,19 @@ def me(u=Depends(current_user)):
     return user_out(u)
 
 
+class PasswordIn(BaseModel):
+    current: str
+    new: str = Field(min_length=8, max_length=128)
+
+
+@app.post("/api/auth/password", status_code=204)
+def change_password(b: PasswordIn, u=Depends(current_user), db=Depends(get_db)):
+    if not check_pw(b.current, u.password_hash):
+        raise HTTPException(403, "Current password is wrong")
+    u.password_hash = hash_pw(b.new)
+    db.add(u); db.commit()
+
+
 @app.get("/api/hardware")
 def hw(u=Depends(current_user)):
     return {"hardware": compute.hardware(), "software": compute.software()}
@@ -160,7 +174,7 @@ def hw(u=Depends(current_user)):
 def ser(a, detail=False):
     d = {"id": a.id, "name": a.name, "type": a.analysis_type, "execution_mode": a.execution_mode,
          "mode_used": a.mode_used, "status": a.status, "seq_id": a.seq_id, "seq_length": a.seq_length,
-         "n_candidates": a.n_candidates, "runtime_ms": a.runtime_ms,
+         "n_candidates": a.n_candidates, "runtime_ms": a.runtime_ms, "n_records": (a.params or {}).get("records_in_input", 1),
          "created_at": iso(a.created_at), "completed_at": iso(a.completed_at)}
     if detail:
         d.update(params=a.params, result=a.result, error=a.error, seq_hash=a.seq_hash,
@@ -182,8 +196,14 @@ def run_analysis(aid: int):
         a = db.get(Analysis, aid)
         a.status = "running"; db.commit()
         p, timing, t_all = a.params, {}, time.perf_counter()
+
+        def stage(name):  # real stage name, shown to the user while running
+            a.result = {"stage": name}; db.commit()
         t = time.perf_counter()
-        cands = core.scan(a.reference, p["guide_len"], p["pam"], p["strands"])
+        cands = []
+        if a.analysis_type != "alignment":
+            stage("Finding CRISPR targets")
+            cands = core.scan(a.reference, p["guide_len"], p["pam"], p["strands"])
         timing["scan_ms"] = ms(t)
         mode_used, hist = "cpu", [0] * (p["guide_len"] + 1)
         if cands:
@@ -193,6 +213,7 @@ def run_analysis(aid: int):
             ref = compute.encode([cg])[0] if cg else arr[0]
             gpu_ok = compute.gpu_status()["available"]
             use_gpu = a.execution_mode == "gpu" or (a.execution_mode == "auto" and gpu_ok and len(cands) >= GPU_AUTO_MIN)
+            stage("Scoring candidates")
             t = time.perf_counter()
             if use_gpu:
                 gc, mm, timing["gpu"] = compute.gpu_score(arr, ref)
@@ -210,6 +231,7 @@ def run_analysis(aid: int):
                 db.execute(insert(Candidate), rows[i:i + 5000])
         aln = None
         if a.query:
+            stage("Aligning sequences")
             t = time.perf_counter()
             aln = core.align(a.reference, a.query, p["align_mode"], p["match"], p["mismatch"], p["gap_open"], p["gap_extend"])
             timing["align_ms"] = ms(t)
@@ -246,17 +268,22 @@ def create_analysis(b: AnalysisIn, bg: BackgroundTasks, u=Depends(current_user),
             raise ValueError(f"Alignment needs both sequences <= {core.MAX_ALIGN_LEN} bases")
     except ValueError as e:
         raise bad(str(e))
+    atype = b.analysis_type or ("full" if qrecs else "crispr")
+    if atype in ("alignment", "full") and not qrecs:
+        raise bad("Add a second DNA sequence to compare.")
+    if atype == "crispr":
+        qrecs = None
     seq_id, seq = recs[0]
     if len(seq) > MAX_SEQ:
         raise bad(f"Sequence too long (max {MAX_SEQ} bases)")
-    if len(seq) < b.guide_len + len(b.pam):
+    if atype != "alignment" and len(seq) < b.guide_len + len(b.pam):
         raise bad("Sequence shorter than guide + PAM")
     if b.execution_mode == "gpu" and not compute.gpu_status()["available"]:
         raise bad("GPU not available: " + compute.gpu_status()["reason"])
-    params = b.model_dump(exclude={"reference", "query", "name", "execution_mode"})
+    params = b.model_dump(exclude={"reference", "query", "name", "execution_mode", "analysis_type"})
     params["compare_guide"] = cg
     params["records_in_input"] = len(recs)
-    a = Analysis(user_id=u.id, name=b.name.strip(), analysis_type="crispr+alignment" if qrecs else "crispr",
+    a = Analysis(user_id=u.id, name=b.name.strip(), analysis_type={"crispr": "crispr", "alignment": "alignment", "full": "crispr+alignment"}[atype],
                  execution_mode=b.execution_mode, params=params, reference=seq,
                  query=qrecs[0][1] if qrecs else None, seq_id=seq_id, seq_length=len(seq),
                  seq_hash=hashlib.sha256(seq.encode()).hexdigest())

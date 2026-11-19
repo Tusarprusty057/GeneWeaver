@@ -60,3 +60,21 @@ def test_align_and_benchmark():
     assert r.status_code == 200 and r.json()["gaps"] == 1
     b = c.post("/api/benchmark", headers=h, json={"sizes": [100], "repeats": 2})
     assert b.status_code == 200 and c.get("/api/benchmarks/latest", headers=h).json()["rows"][0]["n"] == 100
+
+
+def test_analysis_types_and_password():
+    h = reg("u5@x.com")
+    # alignment only: no scan, needs second sequence
+    assert c.post("/api/analyses", headers=h, json={"name": "a", "reference": SEQ, "analysis_type": "alignment"}).status_code == 422
+    r = c.post("/api/analyses", headers=h, json={"name": "a", "reference": SEQ, "query": SEQ[:30], "analysis_type": "alignment"})
+    a = c.get(f"/api/analyses/{r.json()['id']}", headers=h).json()
+    assert a["status"] == "completed" and a["n_candidates"] == 0 and a["result"]["alignment"]["identity"] == 100
+    # crispr only ignores query
+    r = c.post("/api/analyses", headers=h, json={"name": "b", "reference": SEQ, "query": SEQ[:30], "analysis_type": "crispr"})
+    a = c.get(f"/api/analyses/{r.json()['id']}", headers=h).json()
+    assert a["result"]["alignment"] is None and a["n_candidates"] >= 2 and a["n_records"] == 1
+    # password change
+    assert c.post("/api/auth/password", headers=h, json={"current": "bad", "new": "newpassword1"}).status_code == 403
+    assert c.post("/api/auth/password", headers=h, json={"current": "password123", "new": "newpassword1"}).status_code == 204
+    assert c.post("/api/auth/login", json={"email": "u5@x.com", "password": "newpassword1"}).status_code == 200
+    assert c.post("/api/auth/login", json={"email": "u5@x.com", "password": "password123"}).status_code == 401

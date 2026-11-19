@@ -29,11 +29,14 @@ Open http://localhost:5173 → Register → New Analysis.
 - `backend/app/compute.py` CPU/GPU candidate scoring, hardware info, benchmark
 - `backend/app/main.py` routes, auth (PBKDF2 + JWT), background jobs, CSV/JSON/PDF export
 - `backend/app/db.py` models: users, analyses, candidates, benchmarks
-- `frontend/src/pages/*` Landing, Auth, Dashboard, New Analysis, Alignment, Benchmark, History, Analysis detail, Docs
+- `frontend/src/styles.css` design system; `ui.jsx` shared components; `App.jsx` grouped sidebar + mobile drawer
+- `frontend/src/pages/*` Landing, Auth, Dashboard, New Analysis (3 steps, also used as CRISPR Scanner), Alignment, Benchmark, History, Reports, Settings/Profile, Analysis detail, Docs
 
 ## Limits (honest)
 - GPU code is untested on real GPU hardware (none in build sandbox). CPU path is tested.
 - GPU only accelerates candidate scoring (GC + mismatches), not full DP alignment.
 - No off-target search, no efficacy prediction. Educational use.
-- Not included: Playwright/Vitest tests, TypeScript, Alembic migrations, password reset, settings page, separate scanner/reports pages, 16-file docs set, project report, slides.
+- Not included: Vitest tests, TypeScript, Alembic migrations, password reset by email, 16-file docs set, project report, slides.
+- Settings (theme, default processing) are saved in the browser, not the database.
+- Optional browser smoke test: `pip install playwright && playwright install chromium`, start both servers, run `python e2e_smoke.py`.
 - Set `GENEWEAVER_SECRET` env var for stable login tokens; else `.secret` file is made on first run.
