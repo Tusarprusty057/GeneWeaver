@@ -40,3 +40,5 @@ Open http://localhost:5173 → Register → New Analysis.
 - Settings (theme, default processing) are saved in the browser, not the database.
 - Optional browser smoke test: `pip install playwright && playwright install chromium`, start both servers, run `python e2e_smoke.py`.
 - Set `GENEWEAVER_SECRET` env var for stable login tokens; else `.secret` file is made on first run.
+
+<!-- -----xxx---- -->
